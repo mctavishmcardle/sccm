@@ -26,7 +26,7 @@ class MalformedRotation(Exception):
 
 
 class Connector:
-    """A connector. for aligning components"""
+    """A connector, for aligning components"""
 
     def __init__(
         self,
