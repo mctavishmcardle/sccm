@@ -1,0 +1,6 @@
+[run]
+source = lib/sccm
+branch = true
+
+[json]
+pretty_print = true
