@@ -1,6 +1,13 @@
+import functools
+import itertools
 import typing
 
+import solid
+
 from sccm import affinables
+
+Composition = typing.Union[solid.union, solid.difference, solid.intersection]
+CompositionAndOperands = typing.Tuple[Composition, typing.List["Component"]]
 
 
 class ReparentException(Exception):
@@ -9,6 +16,17 @@ class ReparentException(Exception):
     def __init__(self, child: "Component", parent: "Component") -> None:
         self.child = child
         self.parent = parent
+
+
+class DisembodiedComponent(Exception):
+    """Raised when a body cannot be constructed for a component"""
+
+    def __init__(self, component: "Component") -> None:
+        """
+        Args:
+            component: The disembodied component
+        """
+        self.component = component
 
 
 class Component(affinables.HistoricalTransformable):
@@ -20,7 +38,10 @@ class Component(affinables.HistoricalTransformable):
     """
 
     def __init__(
-        self, parent: "Component" = None, children: typing.List["Component"] = None
+        self,
+        parent: "Component" = None,
+        children: typing.List["Component"] = None,
+        compositions: typing.List[CompositionAndOperands] = None,
     ) -> None:
         """
         Args:
@@ -28,30 +49,46 @@ class Component(affinables.HistoricalTransformable):
                 as one of the parent's children
             children: The component's children, if any; this component will be
                 set as the children's parent
+            compositions:
         """
         # The transformations that affect this component & its children, but not
         # its parents
         self.direct_transformations: typing.List[affinables.AffineTransformation] = []
 
         self._parent: typing.Optional["Component"] = None
+        self.children: typing.List["Component"] = []
+
         if parent:
             self.parent = parent
 
-        self.children: typing.List["Component"] = []
         if children is not None:
             for child in children:
                 self.add_child(child)
 
-    def add_child(self, child: "Component") -> None:
-        """Make a component this component's child
+        self.compositions: typing.List[
+            typing.Tuple[Composition, typing.List["Component"]]
+        ] = compositions
+        if not self.compositions:
+            self.compositions = []
+
+    def add_child(
+        self, children: typing.Union["Component", typing.List["Component"]]
+    ) -> None:
+        """Make one or more components this component's child
 
         Args:
-            child: The child to add
+            children: The child or children to add
         """
-        self.children.append(child)
+        if isinstance(children, list):
+            for child in children:
+                self.add_child(child)
+        else:
+            child = children
 
-        if child.parent is not self:
-            child.parent = self
+            self.children.append(child)
+
+            if child.parent is not self:
+                child.parent = self
 
     @property
     def parent(self) -> typing.Optional["Component"]:
@@ -73,7 +110,7 @@ class Component(affinables.HistoricalTransformable):
             raise ReparentException(self, parent)
 
         self._parent = parent
-        if self not in parent.children:
+        if not any(self is child for child in parent.children):
             parent.add_child(self)
 
     @property
@@ -122,27 +159,50 @@ class Component(affinables.HistoricalTransformable):
             other: The other component, to whose children this component's
                 children should be compared
         """
-
         return len(self.children) == len(other.children) and all(
             child in other.children for child in self.children
         )
 
+    def same_compositions(self, other: "Component") -> bool:
+        """Does this component have the same compositions as another?
+
+        This allows the comparison of compositions without respect to operand
+        order
+
+        Args:
+            other: The other component, to whose compositions this component's
+                compositions should be compared
+        """
+        return all(
+            # Composition instances, like all OpenSCAD objects, are
+            # non-comparable, but their types are
+            type(self_composition) == type(other_composition)
+            and len(self_operands) == len(other_operands)
+            and all(operand in other_operands for operand in self_operands)
+            for (self_composition, self_operands), (
+                other_composition,
+                other_operands,
+            ) in zip(self.compositions, other.compositions)
+        )
+
     def __eq__(self, other: object) -> bool:
-        """Is this component equal to enother object?
+        """Is this component equal to another object?
 
         Parenthood per se is not taken into account, but transformations
         (both direct & inherited from parents) are (by virtue of parent
         class equality); children are considered 'part' of the component,
-        and so are compared.
+        and so are compared, as are compositions
 
         Essentially: two components are equal if their bodies would be
         identical, except when their transformations are equivalent but
-        different.
+        different (e.g. a 10x scale followed by a 2x scale, which would not be
+        considered equal to a 2x scale compared to a 10x scale)
         """
         return (
             super().__eq__(other)
             and isinstance(other, Component)
             and self.same_children(other)
+            and self.same_compositions(other)
         )
 
     @property
@@ -156,11 +216,10 @@ class Component(affinables.HistoricalTransformable):
         return self.__class__()
 
     def copy(self, isolate: bool = False) -> "Component":
-        """Copy this component, optionally with family relationships
+        """Copy this component
 
         Args:
-            isolate: Should this copy be created without the parent & child
-                relationships that the original has?
+            isolate: If true, the copied component will
         """
         copy = self._copy
 
@@ -169,9 +228,28 @@ class Component(affinables.HistoricalTransformable):
         if self.parent and not isolate:
             copy.parent = self.parent
 
-        # All children are copied
-        for child in self.children:
-            # Chidren fulfilling specific roles in the component should be
+        # Copy components involved in composition
+        for composition, operands in self.compositions:
+            make_children = all(operand in self.children for operand in operands)
+
+            copy.compose(
+                composition,
+                operands,
+                copy=isolate or make_children,
+                inplace=True,
+                make_children=make_children,
+            )
+
+            # Any child operands must be specifically made children, if the
+            # whole set isn't;
+            if not make_children:
+                for operand in operands:
+                    if operand in self.children:
+                        copy.add_child(operand.copy(isolate=True))
+
+        # All children are copied, because we can't reparent
+        for child in self.uncomposed_children:
+            # Children fulfilling specific roles in the component should be
             # copied by `_copy`, so they shouldn't be copied here
             if child not in copy.children:
                 # Isolate & then reparent them
@@ -182,3 +260,157 @@ class Component(affinables.HistoricalTransformable):
             copy.transform(transformation)
 
         return copy
+
+    def compose(
+        self,
+        composition: Composition,
+        operands: typing.Union["Component", typing.List["Component"]],
+        copy: bool = False,
+        inplace: bool = True,
+        make_children: bool = True,
+    ) -> "Component":
+        """Compose this component with one or more other components
+
+        Args:
+            composition: The type of composition to apply
+            operands: The component or components to compose with
+            copy: If true, the operands will be copied in isolation before the
+                composition is applied
+            inplace: If true, the composition will be applied to this component;
+                otherwise, a new component will be constructed with the
+                components being composed as children
+            make_children: Should the components involved in the composition be
+                made children of the result component?
+
+        Returns:
+            The 'parent' of the composition: either this component, if the
+            composition is performed in place, or a newly-constructed componento
+            if not
+        """
+        if not isinstance(operands, list):
+            operands = [operands]
+
+        if copy:
+            operands = [operand.copy(isolate=True) for operand in operands]
+
+        if inplace:
+            self.compositions.append((composition, operands))
+            component = self
+            children = operands
+        else:
+            operands += [self]
+            component = Component(compositions=[(composition, operands)])
+            children = operands
+
+        if make_children:
+            component.add_child(
+                [child for child in children if child not in component.children]
+            )
+
+        return component
+
+    @property
+    def composed_components(self) -> typing.Iterator["Component"]:
+        """All of the operand components composed with this component"""
+        if self.compositions:
+            operands = tuple(zip(*self.compositions))[1]
+        else:
+            operands = []
+
+        yield from itertools.chain(*operands)
+
+    @property
+    def uncomposed_children(self) -> typing.Iterator["Component"]:
+        """All of the children of this component not composed with it"""
+        composed_components = list(self.composed_components)
+        for child in self.children:
+            if child not in composed_components:
+                yield child
+
+    @property
+    def _body(self) -> typing.Optional[solid.OpenSCADObject]:
+        """The transformed object that embodies the base of this component
+
+        This should not include any components that are included in compositions
+        """
+        uncomposed_children = list(self.uncomposed_children)
+
+        if uncomposed_children:
+            return solid.union()([child.body for child in uncomposed_children])
+        else:
+            return None
+
+    @classmethod
+    def _apply_composition(
+        cls, composition: Composition, operands: typing.List[solid.OpenSCADObject]
+    ) -> solid.OpenSCADObject:
+        """Apply a composition to a set of operands
+
+        Args:
+            composition: The composition to apply
+            operands: The operands to apply the composition to
+
+        Returns:
+            The object that results from applying the composition to the operands
+        """
+        # The composition must be copied first because application mutates the
+        # composition object
+        return composition.copy()(operands)
+
+    @property
+    def body(self) -> solid.OpenSCADObject:
+        """The fully transformed object that embodies this component
+
+        Raises:
+            DisembodiedComponent:
+                If this component cannot be rendered as a body
+        """
+        body_reduction = functools.partial(
+            functools.reduce,
+            lambda body, composition_and_operands: self._apply_composition(
+                composition_and_operands[0],
+                [body] + [operand.body for operand in composition_and_operands[1]],
+            ),
+        )
+
+        if self._body:
+            return body_reduction(self.compositions, self._body)
+        else:
+            if not self.compositions:
+                raise DisembodiedComponent(self)
+
+            # To avoid e.g. an empty `union` at the root of the compositions,
+            # if this component is a pure container (without a defined `_body`),
+            # we must extract an initial body to compose onto from the first
+            # composition & its operands
+            first_composition, first_operands = self.compositions[0]
+            return body_reduction(
+                self.compositions[1:],
+                self._apply_composition(
+                    first_composition, [operand.body for operand in first_operands]
+                ),
+            )
+
+    def scad_source(self, fn: int = None) -> str:
+        """The OpenSCAD source code that this component corresponds to"""
+        header = ""
+        if fn:
+            header = f"$fn = {fn};"
+
+        return solid.scad_render(self.body, header)
+
+    def compile(self, filename: str = None, fn: int = None) -> None:
+        """Write OpenSCAD source corresponding to this component
+
+        Args:
+            filename: The path to which to write the file; if not provided, the
+                file will be written to the working directory & given the same
+                name as this class
+            fn: The number of facets to render curved surfaces with; if not
+                provided, the `OpenSCAD` default will be used
+        """
+        if filename is None:
+            filename = f"{self.__class__.__name__}.scad"
+
+        with open(filename, "w") as file_contents:
+            file_contents.write(self.scad_source(fn))

@@ -132,7 +132,9 @@ class HistoricalTransformable(Affinable, abc.ABC):
             return target.transform(self.transformations)
         else:
             return functools.reduce(
-                lambda openscad_object, transformation: transformation(openscad_object),
+                lambda openscad_object, transformation: transformation.copy()(
+                    openscad_object
+                ),
                 self.transformations,
                 target,
             )

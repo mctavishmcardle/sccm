@@ -1,3 +1,3 @@
-from . import component
+from . import component, cylinder
 
-__all__ = ["component"]
+__all__ = ["component", "cylinder"]
