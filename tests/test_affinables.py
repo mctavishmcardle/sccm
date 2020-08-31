@@ -4,12 +4,11 @@ import unittest
 import solid
 
 from sccm import affinables
+from tests import utils
 
 
 class MockAffinable(affinables.Affinable):
-    def _transform(
-        self, transform: affinables.AffineTransformation
-    ) -> affinables.Affinable:
+    def _transform(self, transform: affinables.AffineTransformation) -> "MockAffinable":
         return self
 
 
@@ -28,6 +27,87 @@ class TestAffinable(unittest.TestCase):
             msg="Affinable subclass instances should not be equal to non-affinables",
         )
 
+    def test_same_transformations_equivalent(self) -> None:
+        self.assertTrue(
+            affinables.Affinable._same_transformations(
+                [
+                    solid.rotate([11.0, 12.0, 13.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.scale([31.0, 32.0, 33.0]),
+                ],
+                [
+                    solid.rotate([11.0, 12.0, 13.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.scale([31.0, 32.0, 33.0]),
+                ],
+            ),
+            msg="Identical transformations should be considered the same",
+        )
+
+    def test_same_transformations_nonequivalent_params(self) -> None:
+        self.assertFalse(
+            affinables.Affinable._same_transformations(
+                [
+                    solid.rotate([11.0, 12.0, 13.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.scale([31.0, 32.0, 33.0]),
+                ],
+                [
+                    solid.rotate([11.1, 12.1, 13.1]),
+                    solid.translate([21.1, 22.1, 23.1]),
+                    solid.scale([31.1, 32.1, 33.1]),
+                ],
+            ),
+            msg="Similar transformations with different params are not the same",
+        )
+
+    def test_same_transformations_nonequivalent_types(self) -> None:
+        self.assertFalse(
+            affinables.Affinable._same_transformations(
+                [
+                    solid.rotate([11.0, 12.0, 13.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.scale([31.0, 32.0, 33.0]),
+                ],
+                [
+                    solid.translate([11.0, 12.0, 13.0]),
+                    solid.scale([21.0, 22.0, 23.0]),
+                    solid.rotate([31.0, 32.0, 33.0]),
+                ],
+            ),
+            msg="Similar transformations with different types are not the same",
+        )
+
+    def test_same_transformations_different_order(self) -> None:
+        self.assertFalse(
+            affinables.Affinable._same_transformations(
+                [
+                    solid.rotate([11.0, 12.0, 13.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.scale([31.0, 32.0, 33.0]),
+                ],
+                [
+                    solid.scale([31.0, 32.0, 33.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.rotate([11.0, 12.0, 13.0]),
+                ],
+            ),
+            msg="Identical transformations in different orders should not be considered the same",
+        )
+
+    def test_same_transformations_different_lengths(self) -> None:
+        self.assertFalse(
+            affinables.Affinable._same_transformations(
+                [
+                    solid.rotate([11.0, 12.0, 13.0]),
+                    solid.translate([21.0, 22.0, 23.0]),
+                    solid.scale([31.0, 32.0, 33.0]),
+                ],
+                [solid.rotate([11.0, 12.0, 13.0]), solid.translate([21.0, 22.0, 23.0])],
+            ),
+            msg="Transformation lists of different lengths are not the same",
+        )
+
 
 class MockHolonomicTransformable(affinables.HolonomicTransformable):
     def __init__(self) -> None:
@@ -35,17 +115,15 @@ class MockHolonomicTransformable(affinables.HolonomicTransformable):
         self._translations: typing.List[solid.translate] = []
         self._scalings: typing.List[solid.scale] = []
 
-    def rotate(self, rotation: solid.rotate) -> affinables.HolonomicTransformable:
+    def rotate(self, rotation: solid.rotate) -> "MockHolonomicTransformable":
         self._rotations.append(rotation)
         return self
 
-    def translate(
-        self, translation: solid.translate
-    ) -> affinables.HolonomicTransformable:
+    def translate(self, translation: solid.translate) -> "MockHolonomicTransformable":
         self._translations.append(translation)
         return self
 
-    def scale(self, scaling: solid.scale) -> affinables.HolonomicTransformable:
+    def scale(self, scaling: solid.scale) -> "MockHolonomicTransformable":
         self._scalings.append(scaling)
         return self
 
@@ -107,39 +185,13 @@ class MockHistoricalTransformable(affinables.HistoricalTransformable):
 
     def _transform(
         self, transform: affinables.AffineTransformation
-    ) -> affinables.Affinable:
+    ) -> "MockHistoricalTransformable":
         self._transformations.append(transform)
         return self
 
-    # `mypy` cannot properly check decorated properties
-    @property  # type: ignore
-    @affinables.HistoricalTransformable.transformed_object
+    @affinables.HistoricalTransformable.transformed_property
     def cube(self) -> solid.OpenSCADObject:
         return solid.cube(1)
-
-
-def flatten_openscad_children(
-    parent: solid.OpenSCADObject
-) -> typing.List[solid.OpenSCADObject]:
-    """Get a recursive list of this object's children, in order of depth
-
-    This object will be last, and its deepest-level children will be first
-
-    Args:
-        parent: The object whose children to retrieve
-
-    Raises:
-        ValueError:
-            If this parent has more than one child
-    """
-    child_count = len(parent.children)
-
-    if child_count == 0:
-        return [parent]
-    elif child_count > 1:
-        raise ValueError
-    else:
-        return flatten_openscad_children(parent.children[0]) + [parent]
 
 
 class TestHistoricalTransformable(unittest.TestCase):
@@ -205,9 +257,12 @@ class TestHistoricalTransformable(unittest.TestCase):
         cube = solid.cube(1)
         transformed_nonaffinable = transformable.transformed(cube)
 
-        self.assertEqual(
-            [cube] + transformations,
-            flatten_openscad_children(transformed_nonaffinable),
+        self.assertTrue(
+            affinables.Affinable._same_transformations(
+                transformations,
+                # Just extract the transformations to compare
+                utils.flatten_openscad_children(transformed_nonaffinable)[1:],
+            ),
             msg="Transformation application order should be unchanged, and application shouldn't alter transformations",
         )
 
@@ -223,11 +278,11 @@ class TestHistoricalTransformable(unittest.TestCase):
 
         transformed_nonaffinable = transformable.cube
 
-        # Exclude the source cube here; OpenSCADObjects don't implement equality,
-        # and we don't gain any thing by convolutedly storing the cube instance
-        # on the mock historical affinable so it can be compared here
-        self.assertEqual(
-            transformations,
-            flatten_openscad_children(transformed_nonaffinable)[1:],
+        self.assertTrue(
+            affinables.Affinable._same_transformations(
+                transformations,
+                # Just extract the transformations to compare
+                utils.flatten_openscad_children(transformed_nonaffinable)[1:],
+            ),
             msg="The property should be correctly transformed, identically to the parent Affinable",
         )

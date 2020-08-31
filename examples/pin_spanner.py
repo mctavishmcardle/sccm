@@ -6,7 +6,7 @@ purposes of machining: specifically, the spanner body is, at the end of the
 construction process, still a solid cylinder, rather than one with holes for the
 insertion of the pins & handle.
 
-When run, renders the model into `OpenSCAD` source in `Spanner.scad`
+When run, renders the model into `OpenSCAD` source in `pin_spanner.scad`
 
 The source file can be explored interactively, or rendered to an image with:
 
@@ -17,8 +17,8 @@ The source file can be explored interactively, or rendered to an image with:
         --view axes,scales \
         --projection o \
         --render \
-        -o Spanner.png \
-        Spanner.scad
+        -o pin_spanner.png \
+        pin_spanner.scad
 """
 
 import solid
@@ -28,13 +28,13 @@ from sccm.components.component import Component
 from sccm.components.cylinder import Cylinder
 
 # Parent component for the whole thing
-wrench = Component()
+pin_spanner = Component()
 
-# The main 'body' of the wrench, to which the other things attach
-spanner_body = Cylinder(od=3 / 4, length=1.0, parent=wrench)
+# The main 'body' of the spanner, to which the other things attach
+spanner_body = Cylinder(od=3 / 4, length=1.0, parent=pin_spanner)
 
-# The handle of the wrench
-handle = Cylinder(od=1 / 4, length=1.5, center=True, parent=wrench)
+# The handle of the spanner
+handle = Cylinder(od=1 / 4, length=1.5, center=True, parent=pin_spanner)
 handle_rotation = solid.rotate([90.0, 0.0, 0.0])
 handle.transform(handle_rotation)
 handle.transform(
@@ -48,7 +48,7 @@ handle.transform(solid.utils.down(3 / 8))
 # Subtract the space occupied by the handle from the body
 spanner_body.compose(solid.difference(), handle, make_children=False)
 
-# The pin that actually engages in the hole in the nut (which this wrench is
+# The pin that actually engages in the hole in the nut (which this spanner is
 # designed to turn) is made from a 1/8" pin, but the part that engages in the
 # hole must be turned down to fit the hole's size
 protruding_pin = Cylinder(od=0.110, length=0.1)
@@ -70,6 +70,7 @@ pin_assemblies = [pin_assembly_a, pin_assembly_b]
 
 # Subtract the space occupied by the pins from the body
 spanner_body.compose(solid.difference(), pin_assemblies, make_children=False)
-wrench.add_child(pin_assemblies)
+pin_spanner.add_child(pin_assemblies)
 
-wrench.compile("Spanner.scad", 15)
+if __name__ == "__main__":
+    pin_spanner.compile("pin_spanner.scad", 15)

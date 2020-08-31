@@ -8,16 +8,18 @@ import solid
 # The subset of OpenSCAD transformations which are linear & which we support
 AffineTransformation = typing.Union[solid.translate, solid.rotate, solid.scale]
 
+GenericAffinable = typing.TypeVar("GenericAffinable", bound="Affinable")
+
 
 class Affinable(abc.ABC):
     """An object capable of undergoing affine OpenSCAD transformations"""
 
     def transform(
-        self,
+        self: GenericAffinable,
         transform: typing.Union[
             AffineTransformation, typing.Iterable[AffineTransformation]
         ],
-    ) -> "Affinable":
+    ) -> GenericAffinable:
         """Apply an affine transformations to this object
 
         Args:
@@ -37,7 +39,9 @@ class Affinable(abc.ABC):
             return self._transform(transform)
 
     @abc.abstractmethod
-    def _transform(self, transform: AffineTransformation) -> "Affinable":
+    def _transform(
+        self: GenericAffinable, transform: AffineTransformation
+    ) -> GenericAffinable:
         """Apply a transformation to this object
 
         Args:
@@ -51,15 +55,44 @@ class Affinable(abc.ABC):
         """Is this object equal to another object?"""
         return isinstance(other, Affinable)
 
+    @staticmethod
+    def _same_transformations(
+        left_transformations: typing.Iterable[AffineTransformation],
+        right_transformations: typing.Iterable[AffineTransformation],
+    ) -> bool:
+        """Are these two lists of transformations equivalent?
+
+        Args:
+            left_transformations: One of the two lists of transformations to
+                compare
+            right_transformations: The other list of transformations to compare
+        """
+        return all(
+            # Transformations instances, like all OpenSCAD objects, are
+            # non-comparable, but we can compare their types and their
+            # parameters to determine equivalency
+            type(self_transform) == type(other_transform)
+            and self_transform.params == other_transform.params
+            for self_transform, other_transform in itertools.zip_longest(
+                left_transformations, right_transformations
+            )
+        )
+
 
 # Objects to which affine transformations can be applied
-AffineTransformable = typing.Union[Affinable, solid.OpenSCADObject]
+AffineTransformable = typing.Union[GenericAffinable, solid.OpenSCADObject]
+
+GenericHolonomicTransformable = typing.TypeVar(
+    "GenericHolonomicTransformable", bound="HolonomicTransformable"
+)
 
 
 class HolonomicTransformable(Affinable, abc.ABC):
     """A transformable object which doesn't keep track of its history"""
 
-    def _transform(self, transform: AffineTransformation) -> "HolonomicTransformable":
+    def _transform(
+        self: GenericHolonomicTransformable, transform: AffineTransformation
+    ) -> GenericHolonomicTransformable:
         """Apply an affine transformation to this object
 
         Args:
@@ -82,7 +115,9 @@ class HolonomicTransformable(Affinable, abc.ABC):
             raise NotImplementedError
 
     @abc.abstractmethod
-    def rotate(self, rotation: solid.rotate) -> "HolonomicTransformable":
+    def rotate(
+        self: GenericHolonomicTransformable, rotation: solid.rotate
+    ) -> GenericHolonomicTransformable:
         """Transform this object to account for a rotation
 
         Args:
@@ -90,7 +125,9 @@ class HolonomicTransformable(Affinable, abc.ABC):
         """
 
     @abc.abstractmethod
-    def translate(self, translation: solid.translate) -> "HolonomicTransformable":
+    def translate(
+        self: GenericHolonomicTransformable, translation: solid.translate
+    ) -> GenericHolonomicTransformable:
         """Transform this object to account for a translation
 
         Args:
@@ -98,7 +135,9 @@ class HolonomicTransformable(Affinable, abc.ABC):
         """
 
     @abc.abstractmethod
-    def scale(self, scaling: solid.scale) -> "HolonomicTransformable":
+    def scale(
+        self: GenericHolonomicTransformable, scaling: solid.scale
+    ) -> GenericHolonomicTransformable:
         """Transform this object to account for a scaling
 
         Args:
@@ -106,8 +145,12 @@ class HolonomicTransformable(Affinable, abc.ABC):
         """
 
 
-HistoricalAffinablePropertyMethod = typing.Callable[
-    ["HistoricalTransformable"], AffineTransformable
+GenericHistoricalTransformable = typing.TypeVar(
+    "GenericHistoricalTransformable", bound="HistoricalTransformable"
+)
+
+HistoricalTransformablePropertyMethod = typing.Callable[
+    [GenericHistoricalTransformable], AffineTransformable
 ]
 
 
@@ -140,38 +183,43 @@ class HistoricalTransformable(Affinable, abc.ABC):
             )
 
     @staticmethod
-    def transformed_object(
-        object_property: HistoricalAffinablePropertyMethod
-    ) -> HistoricalAffinablePropertyMethod:
+    def transformed_property(
+        object_property: HistoricalTransformablePropertyMethod
+    ) -> AffineTransformable:
         """Decorate transformable properties so they transform in sync
 
         The result property will have all of the parent transformable's
         transformations automatically applied to it, when called.
 
         Note:
-            This decorator should be applied below `@property`:
-
-                @property
-                @HistoricalTransformable.transformed_object
-                def object_property(self) -> AffineTransformable:
-                    ...
+            The `property` decoration is applied within this decorator, so it
+            should not be applied independently to target methods.
         """
-
+        # `mypy` cannot properly check decorated properties
+        @property  # type: ignore
         @functools.wraps(object_property)
-        def transformed_property(self) -> AffineTransformable:
+        def transformed_property(
+            self: GenericHistoricalTransformable
+        ) -> AffineTransformable:
             return self.transformed(object_property(self))
 
         return transformed_property
+
+    def same_transformations(
+        self: GenericHistoricalTransformable, other: GenericHistoricalTransformable
+    ) -> bool:
+        """Does this component have the same transformations as another?
+
+        Args:
+            other: The other component, to whose transformations this component's
+                transformations should be compared
+        """
+        return self._same_transformations(self.transformations, other.transformations)
 
     def __eq__(self, other: object) -> bool:
         """Is this object equal to another object?"""
         return (
             super().__eq__(other)
             and isinstance(other, HistoricalTransformable)
-            and all(
-                self_transform == other_transform
-                for self_transform, other_transform in itertools.zip_longest(
-                    self.transformations, other.transformations
-                )
-            )
+            and self.same_transformations(other)
         )

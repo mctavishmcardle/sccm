@@ -49,7 +49,7 @@ class Component(affinables.HistoricalTransformable):
                 as one of the parent's children
             children: The component's children, if any; this component will be
                 set as the children's parent
-            compositions:
+            compositions: The component's compositions, if any
         """
         # The transformations that affect this component & its children, but not
         # its parents
@@ -65,11 +65,9 @@ class Component(affinables.HistoricalTransformable):
             for child in children:
                 self.add_child(child)
 
-        self.compositions: typing.List[
-            typing.Tuple[Composition, typing.List["Component"]]
-        ] = compositions
-        if not self.compositions:
-            self.compositions = []
+        self.compositions: typing.List[CompositionAndOperands] = []
+        if compositions:
+            self.compositions = compositions
 
     def add_child(
         self, children: typing.Union["Component", typing.List["Component"]]
@@ -219,7 +217,8 @@ class Component(affinables.HistoricalTransformable):
         """Copy this component
 
         Args:
-            isolate: If true, the copied component will
+            isolate: If true, the copied component will not retain the parent
+                relationships of the original
         """
         copy = self._copy
 
@@ -230,22 +229,33 @@ class Component(affinables.HistoricalTransformable):
 
         # Copy components involved in composition
         for composition, operands in self.compositions:
-            make_children = all(operand in self.children for operand in operands)
+            copied_child_operands = []
+            all_operands = []
+
+            # Operands that are children must be copied to avoid reparenting
+            for operand in operands:
+                if operand in self.children:
+                    operand = operand.copy(isolate=True)
+                    copied_child_operands.append(operand)
+                elif isolate:
+                    operand = operand.copy(isolate=True)
+
+                all_operands.append(operand)
 
             copy.compose(
                 composition,
-                operands,
-                copy=isolate or make_children,
+                all_operands,
+                # To avoid double-copying child operands, we have to do the copy
+                # manually, above
+                copy=False,
                 inplace=True,
-                make_children=make_children,
+                # Since some operands might not be children, we have to parent
+                # the copied children on their own, after the composition
+                make_children=False,
             )
 
-            # Any child operands must be specifically made children, if the
-            # whole set isn't;
-            if not make_children:
-                for operand in operands:
-                    if operand in self.children:
-                        copy.add_child(operand.copy(isolate=True))
+            for copied_child_operand in copied_child_operands:
+                copy.add_child(copied_child_operand)
 
         # All children are copied, because we can't reparent
         for child in self.uncomposed_children:
@@ -284,7 +294,7 @@ class Component(affinables.HistoricalTransformable):
 
         Returns:
             The 'parent' of the composition: either this component, if the
-            composition is performed in place, or a newly-constructed componento
+            composition is performed in place, or a newly-constructed component
             if not
         """
         if not isinstance(operands, list):
@@ -298,7 +308,10 @@ class Component(affinables.HistoricalTransformable):
             component = self
             children = operands
         else:
-            operands += [self]
+            # This object is only copied (conditionally) if the composition is
+            # not in place; otherwise, it wouldn't be an in-place composition,
+            # since the result object would be distinct from this one.
+            operands += [self.copy(isolate=True) if copy else self]
             component = Component(compositions=[(composition, operands)])
             children = operands
 
@@ -340,9 +353,9 @@ class Component(affinables.HistoricalTransformable):
         else:
             return None
 
-    @classmethod
+    @staticmethod
     def _apply_composition(
-        cls, composition: Composition, operands: typing.List[solid.OpenSCADObject]
+        composition: Composition, operands: typing.List[solid.OpenSCADObject]
     ) -> solid.OpenSCADObject:
         """Apply a composition to a set of operands
 
@@ -379,10 +392,10 @@ class Component(affinables.HistoricalTransformable):
             if not self.compositions:
                 raise DisembodiedComponent(self)
 
-            # To avoid e.g. an empty `union` at the root of the compositions,
-            # if this component is a pure container (without a defined `_body`),
+            # If this component is a pure container (without a defined `_body`),
             # we must extract an initial body to compose onto from the first
-            # composition & its operands
+            # composition & its operands - otherwise, there would be nothing at
+            # the "root" of the compositions
             first_composition, first_operands = self.compositions[0]
             return body_reduction(
                 self.compositions[1:],
@@ -391,7 +404,7 @@ class Component(affinables.HistoricalTransformable):
                 ),
             )
 
-    def scad_source(self, fn: int = None) -> str:
+    def scad_source(self, fn: int = None) -> str:  # pragma: no cover
         """The OpenSCAD source code that this component corresponds to"""
         header = ""
         if fn:
@@ -399,7 +412,7 @@ class Component(affinables.HistoricalTransformable):
 
         return solid.scad_render(self.body, header)
 
-    def compile(self, filename: str = None, fn: int = None) -> None:
+    def compile(self, filename: str = None, fn: int = None) -> None:  # pragma: no cover
         """Write OpenSCAD source corresponding to this component
 
         Args:

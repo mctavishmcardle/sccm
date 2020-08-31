@@ -35,30 +35,26 @@ class Cylinder(component.Component):
     @property
     def _end_distance(self) -> float:
         """The distance from the middle plane to a top or bottom face"""
-        return self.length if not self.center else self.length / 2.0
+        return self.length / 2.0
 
-    @property
-    @component.Component.transformed_object
+    @component.Component.transformed_property
     def top_anchor(self) -> connector.Connector:
         """A connector in the center of the top face"""
-        return self.center_anchor.transform(solid.utils.up(self._end_distance / 2))
+        return self.center_anchor.transform(solid.utils.up(self._end_distance))
 
-    @property
-    @component.Component.transformed_object
+    @component.Component.transformed_property
     def bottom_anchor(self) -> connector.Connector:
         """A connector in the center of the bottom face"""
-        return self.center_anchor.transform(solid.utils.down(self._end_distance / 2))
+        return self.center_anchor.transform(solid.utils.down(self._end_distance))
 
-    @property
-    @component.Component.transformed_object
+    @component.Component.transformed_property
     def center_anchor(self) -> connector.Connector:
         """A connector in the center of the middle plane"""
         return connector.Connector.from_components(
-            point_z=0.0 if self.center else self._end_distance / 2.0
+            point_z=0.0 if self.center else self._end_distance
         )
 
-    @property
-    @component.Component.transformed_object
+    @component.Component.transformed_property
     def _body(self) -> solid.OpenSCADObject:
         return solid.cylinder(d=self.od, h=self.length, center=self.center)
 
