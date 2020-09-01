@@ -1,9 +1,8 @@
-import functools
 import typing
 
 import solid
 
-from sccm import vector
+from sccm import affinables, vector
 
 Transformation = typing.Union[solid.translate, solid.rotate, solid.scale]
 
@@ -25,8 +24,8 @@ class MalformedRotation(Exception):
         self.axis = axis
 
 
-class Connector:
-    """A connector. for aligning components"""
+class Connector(affinables.HolonomicTransformable):
+    """A connector, for aligning components"""
 
     def __init__(
         self,
@@ -187,28 +186,6 @@ class Connector:
             scaling: The scaling object
         """
         return self.copy(self.point * vector.Vector.from_raw(scaling.params["v"]))
-
-    def transform(
-        self, transform: typing.Union[Transformation, typing.List[Transformation]]
-    ) -> "Connector":
-        """Apply transformations to this connector
-
-        Args:
-            transform: Either a single transformation or a list of transformations
-                which will be applied
-        """
-        if isinstance(transform, solid.rotate):
-            return self.rotate(transform)
-        elif isinstance(transform, solid.translate):
-            return self.translate(transform)
-        elif isinstance(transform, solid.scale):
-            return self.scale(transform)
-        else:
-            return functools.reduce(
-                lambda connector, transformation: connector.transform(transformation),
-                transform,
-                self,
-            )
 
     def align(self, other: "Connector" = None) -> typing.Iterator[Transformation]:
         """Emit the transformations necessary to align this connector with another

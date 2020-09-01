@@ -8,7 +8,7 @@ flake8 = "*"
 black = "==19.3b0"
 isort = "*"
 mypy = "*"
-model = {path = ".",editable = true}
+sccm = {path = ".",editable = true}
 pytest = "*"
 pytest-cov = "*"
 pre-commit = "*"

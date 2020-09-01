@@ -1,3 +1,3 @@
-from . import connector, vector
+from . import affinables, components, connector, vector
 
-__all__ = ["connector", "vector"]
+__all__ = ["connector", "vector", "affinables", "components"]
