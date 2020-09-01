@@ -7,7 +7,7 @@ leveraging the flexibility & power of source-code-based object definition. It
 uses `OpenSCAD` as its rendering and interactive engine: objects in `sccm` can
 be rendered to `OpenSCAD` code, which itself can be rendered visually.
 
-![Image of example pin spanner model rendering][examples/pin_spanner.png]
+![Image of example pin spanner model rendering](/examples/pin_spanner.png)
 
 # Example models
 
