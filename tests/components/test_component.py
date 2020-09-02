@@ -32,10 +32,10 @@ class MockEmbodiedComponent(component.Component):
     def _copy(self) -> "MockEmbodiedComponent":
         return self.__class__(self.size)
 
-    def __init__(self, size: float = 1.0):
+    def __init__(self, size: float = 1.0, color: component.Color = None):
         self.size = size
 
-        super().__init__()
+        super().__init__(color=color)
 
     @component.Component.transformed_property
     def _body(self) -> solid.OpenSCADObject:
@@ -470,7 +470,7 @@ class TestComponent(unittest.TestCase):
             msg="Non-isolated copied child operands should be copied and the copies made operands of the copy",
         )
 
-    def test_copy_composition_isolated_non_child_operandS(self) -> None:
+    def test_copy_composition_isolated_non_child_operands(self) -> None:
         composer_1 = MockEmbodiedComponent(2.0)
         composer_2 = MockEmbodiedComponent(3.0)
 
@@ -485,4 +485,46 @@ class TestComponent(unittest.TestCase):
                 for operand in copy.composed_components
             ),
             msg="Isolated copied non-child operands should be copied and the copies made operands of the copy",
+        )
+
+    def test_copy_with_color(self) -> None:
+        test_component = component.Component(color=(1.0, 1.0, 1.0, 1.0))
+
+        self.assertEqual(
+            test_component.color,
+            test_component.copy(with_color=True).color,
+            msg="Copying with color should make a copy with the same color",
+        )
+
+    def test_copy_without_color(self) -> None:
+        test_component = component.Component(color=(1.0, 1.0, 1.0, 1.0))
+        copy_component = test_component.copy(with_color=False)
+
+        self.assertNotEqual(
+            test_component.color,
+            copy_component.color,
+            msg="Copying without color should make a copy that doesn't have the same color",
+        )
+
+        self.assertIsNone(
+            copy_component.color, msg="The copy should have the default color"
+        )
+
+    def test_body_with_color(self) -> None:
+        color_tuple = (1.0, 0.5, 0.25, 0.125)
+
+        self.assertTrue(
+            utils.compare_flattened_openscad_children(
+                MockEmbodiedComponent(size=2.0, color=color_tuple).body,
+                solid.color(color_tuple)(solid.cube(size=2.0)),
+            ),
+            msg="Color should be applied to the body when being rendered",
+        )
+
+    def test_body_without_color(self) -> None:
+        self.assertTrue(
+            utils.compare_flattened_openscad_children(
+                MockEmbodiedComponent(size=2.0, color=None).body, solid.cube(size=2.0)
+            ),
+            msg="Colorless components' bodies should not have colors applied",
         )

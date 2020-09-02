@@ -5,12 +5,13 @@
 workflow similar to one familiar to users of `Fusion 360` (in some ways) while
 leveraging the flexibility & power of source-code-based object definition. It
 uses `OpenSCAD` as its rendering and interactive engine: objects in `sccm` can
-be rendered to `OpenSCAD` code, which itself can be rendered visually.
+be rendered to `OpenSCAD` code, which itself can be rendered visually or explored
+interactively.
 
 <p align="center">
     <img
         src="examples/pin_spanner.png"
-        alt="Image of example pin spanner model rendering"
+        alt="Example pin spanner model rendering"
     >
 </p>
 

@@ -14,6 +14,7 @@ class Cylinder(component.Component):
         length: float,
         center: bool = False,
         parent: component.Component = None,
+        color: component.Color = None,
     ) -> None:
         """
         Args:
@@ -21,8 +22,11 @@ class Cylinder(component.Component):
             length: The cylinder's length
             center: Whether or not to "center" the cylinder's height on the
                 origin; if not, the bottom face will be on the XY plane
+            parent: The cylinder's parent, if any; this component will be set as
+                one of the parent's children
+            color: The color to use for this component, if any
         """
-        super().__init__(parent)
+        super().__init__(parent=parent, color=color)
 
         self.od = od
         self.length = length

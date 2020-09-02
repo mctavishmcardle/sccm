@@ -9,6 +9,12 @@ from sccm import affinables
 Composition = typing.Union[solid.union, solid.difference, solid.intersection]
 CompositionAndOperands = typing.Tuple[Composition, typing.List["Component"]]
 
+# Colors are specified as RBG and an optional alpha channel; each channel
+# should be a value in [0.0, 1.0].
+Color = typing.Union[
+    typing.Tuple[float, float, float], typing.Tuple[float, float, float, float]
+]
+
 
 class ReparentException(Exception):
     """Raised when we attempt to assign a parent to a child that already has one"""
@@ -42,6 +48,7 @@ class Component(affinables.HistoricalTransformable):
         parent: "Component" = None,
         children: typing.List["Component"] = None,
         compositions: typing.List[CompositionAndOperands] = None,
+        color: Color = None,
     ) -> None:
         """
         Args:
@@ -50,6 +57,8 @@ class Component(affinables.HistoricalTransformable):
             children: The component's children, if any; this component will be
                 set as the children's parent
             compositions: The component's compositions, if any
+            color: The color to use for this component, if any; this will override
+                any coloring on children.
         """
         # The transformations that affect this component & its children, but not
         # its parents
@@ -68,6 +77,8 @@ class Component(affinables.HistoricalTransformable):
         self.compositions: typing.List[CompositionAndOperands] = []
         if compositions:
             self.compositions = compositions
+
+        self.color: typing.Optional[Color] = color
 
     def add_child(
         self, children: typing.Union["Component", typing.List["Component"]]
@@ -213,12 +224,14 @@ class Component(affinables.HistoricalTransformable):
         """
         return self.__class__()
 
-    def copy(self, isolate: bool = False) -> "Component":
+    def copy(self, isolate: bool = False, with_color: bool = True) -> "Component":
         """Copy this component
 
         Args:
             isolate: If true, the copied component will not retain the parent
                 relationships of the original
+            with_color: Should the copied component have the original's color,
+                if any?
         """
         copy = self._copy
 
@@ -268,6 +281,9 @@ class Component(affinables.HistoricalTransformable):
         # Copies should have identical direct transformations
         for transformation in self.direct_transformations:
             copy.transform(transformation)
+
+        if with_color:
+            copy.color = self.color
 
         return copy
 
@@ -372,7 +388,7 @@ class Component(affinables.HistoricalTransformable):
 
     @property
     def body(self) -> solid.OpenSCADObject:
-        """The fully transformed object that embodies this component
+        """The fully transformed, composed, and colored embodiment of this component
 
         Raises:
             DisembodiedComponent:
@@ -387,7 +403,7 @@ class Component(affinables.HistoricalTransformable):
         )
 
         if self._body:
-            return body_reduction(self.compositions, self._body)
+            composed_body = body_reduction(self.compositions, self._body)
         else:
             if not self.compositions:
                 raise DisembodiedComponent(self)
@@ -397,12 +413,17 @@ class Component(affinables.HistoricalTransformable):
             # composition & its operands - otherwise, there would be nothing at
             # the "root" of the compositions
             first_composition, first_operands = self.compositions[0]
-            return body_reduction(
+            composed_body = body_reduction(
                 self.compositions[1:],
                 self._apply_composition(
                     first_composition, [operand.body for operand in first_operands]
                 ),
             )
+
+        if self.color:
+            return solid.color(self.color)(composed_body)
+        else:
+            return composed_body
 
     def scad_source(self, fn: int = None) -> str:  # pragma: no cover
         """The OpenSCAD source code that this component corresponds to"""
