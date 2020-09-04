@@ -235,6 +235,13 @@ class Component(affinables.HistoricalTransformable):
         """
         copy = self._copy
 
+        # Copies should have identical direct transformations; this should be
+        # performed first so that we correctly compare children of the original
+        # to children of the copy, because transformations inhereted from the
+        # parent are taken into account
+        for transformation in self.direct_transformations:
+            copy.transform(transformation)
+
         # Only make the copy a child of this object's parent if we aren't
         # isolating (and this object has a parent in the first place)
         if self.parent and not isolate:
@@ -275,12 +282,8 @@ class Component(affinables.HistoricalTransformable):
             # Children fulfilling specific roles in the component should be
             # copied by `_copy`, so they shouldn't be copied here
             if child not in copy.children:
-                # Isolate & then reparent them
+                # Isolate and reparent any non-specific children
                 copy.add_child(child.copy(isolate=True))
-
-        # Copies should have identical direct transformations
-        for transformation in self.direct_transformations:
-            copy.transform(transformation)
 
         if with_color:
             copy.color = self.color

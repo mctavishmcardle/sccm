@@ -250,6 +250,18 @@ class TestComponent(unittest.TestCase):
             msg="The copy's self-specified children should be copied over",
         )
 
+    def test_copy_with_specific_child_and_transformation(self) -> None:
+        test_component = MockChildSpecifyingComponent().transform(
+            solid.rotate([15.0, 45.0, 90.0])
+        )
+        copy_component = test_component.copy()
+
+        self.assertEqual(
+            test_component,
+            copy_component,
+            msg="Equality should hold for copied transformed components with specific child roles",
+        )
+
     def test_composed_components(self) -> None:
         parent = component.Component()
 

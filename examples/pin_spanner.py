@@ -1,11 +1,5 @@
 """An example script that generates a model of a pin spanner
 
-The issue with this example is that while it makes a workable solid model of the
-entire assembly, the individual components are not completely usable for the
-purposes of machining: specifically, the spanner body is, at the end of the
-construction process, still a solid cylinder, rather than one with holes for the
-insertion of the pins & handle.
-
 When run, renders the model into `OpenSCAD` source in `pin_spanner.scad`
 
 The source file can be explored interactively, or rendered to an image with:
@@ -30,8 +24,8 @@ from sccm.components.cylinder import Cylinder
 # The main 'body' of the spanner, to which the other things attach; this is
 # made out of a stubby cylinder of aluminum
 spanner_body = Cylinder(
-    od=3 / 4,
-    length=1.0,
+    diameter=3 / 4,
+    height=1.0,
     # We want to be able to see the other parts embedded inside the body, so it
     # should be transparent
     color=(1.0, 0.0, 0.0, 0.8),
@@ -39,8 +33,8 @@ spanner_body = Cylinder(
 
 # The handle of the spanner, for which we'll just use a 1/4" dowel pin
 handle = Cylinder(
-    od=1 / 4,
-    length=1.5,
+    diameter=1 / 4,
+    height=1.5,
     # Cylinders are created with their height axis along Z; since we need to
     # rotate the handle so it's perpendicular to the handle, it's most
     # convenient to "center" it, so its center point is at the origin, rather
@@ -71,9 +65,9 @@ spanner_body.compose(solid.difference(), handle, make_children=False)
 # The pin that actually engages in the hole in the nut (which this spanner is
 # designed to turn) is made from a 1/8" pin, but the part that engages in the
 # hole must be turned down to fit the hole's size
-protruding_pin = Cylinder(od=0.110, length=0.1)
+protruding_pin = Cylinder(diameter=0.110, height=0.1)
 # The "inside" pin is the unmodified portion that sits inside the spanner body
-inside_pin = Cylinder(od=1 / 8, length=3 / 8)
+inside_pin = Cylinder(diameter=1 / 8, height=3 / 8)
 # Then, we need to align the two portions of the pin model, such that
 protruding_pin.transform(protruding_pin.top_anchor.align(inside_pin.bottom_anchor))
 

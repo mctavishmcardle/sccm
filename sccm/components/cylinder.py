@@ -1,72 +1,57 @@
-import solid
-import solid.utils
-
-from sccm import connector
-from sccm.components import component
+from sccm.components import component, frustum
 
 
-class Cylinder(component.Component):
+class Cylinder(frustum.CircularFrustum):
     """A cylinder"""
 
     def __init__(
         self,
-        od: float,
-        length: float,
+        diameter: float,
+        height: float,
         center: bool = False,
         parent: component.Component = None,
         color: component.Color = None,
     ) -> None:
         """
         Args:
-            od: The outside diameter of the cylinder
-            length: The cylinder's length
+            diameter: The outside diameter of the cylinder
+            height: The cylinder's height
             center: Whether or not to "center" the cylinder's height on the
                 origin; if not, the bottom face will be on the XY plane
             parent: The cylinder's parent, if any; this component will be set as
                 one of the parent's children
             color: The color to use for this component, if any
         """
-        super().__init__(parent=parent, color=color)
+        super().__init__(
+            bottom_diameter=diameter,
+            height=height,
+            center=center,
+            parent=parent,
+            color=color,
+        )
 
-        self.od = od
-        self.length = length
-        self.center = center
+    @property
+    def diameter(self) -> float:
+        """The diameter of the cylinder"""
+        return self.bottom_diameter
+
+    @diameter.setter
+    def diameter(self, diameter: float) -> None:
+        """Set the diameter of the cylinder
+
+        Args:
+            diameter: The new diameter
+        """
+        self.bottom_diameter = diameter
 
     @property
     def _copy(self) -> "Cylinder":
-        return self.__class__(self.od, self.length, self.center)
-
-    @property
-    def _end_distance(self) -> float:
-        """The distance from the middle plane to a top or bottom face"""
-        return self.length / 2.0
-
-    @component.Component.transformed_property
-    def top_anchor(self) -> connector.Connector:
-        """A connector in the center of the top face"""
-        return self.center_anchor.transform(solid.utils.up(self._end_distance))
-
-    @component.Component.transformed_property
-    def bottom_anchor(self) -> connector.Connector:
-        """A connector in the center of the bottom face"""
-        return self.center_anchor.transform(solid.utils.down(self._end_distance))
-
-    @component.Component.transformed_property
-    def center_anchor(self) -> connector.Connector:
-        """A connector in the center of the middle plane"""
-        return connector.Connector.from_components(
-            point_z=0.0 if self.center else self._end_distance
-        )
-
-    @component.Component.transformed_property
-    def _body(self) -> solid.OpenSCADObject:
-        return solid.cylinder(d=self.od, h=self.length, center=self.center)
+        return self.__class__(self.diameter, self.height, self.center)
 
     def __eq__(self, other: object) -> bool:
         return (
             super().__eq__(other)
+            # Since frustum properties are a superset of cylinder properties, we
+            # only have to check
             and isinstance(other, Cylinder)
-            and self.od == other.od
-            and self.length == other.length
-            and self.center == other.center
         )
