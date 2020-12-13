@@ -1,3 +1,8 @@
+# Status
+
+This project is no longer under active development: I've discovered `cadquery`,
+which is sufficient for my purposes.
+
 # `sccm`: Solid Component (& Constraint\*) Modeling
 > \* (constraint-based modeling coming before version `1.0`)
 
